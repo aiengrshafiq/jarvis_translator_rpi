@@ -25,11 +25,55 @@ TRANSLATE_ENDPOINT = "https://api.cognitive.microsofttranslator.com"
 
 translation_mode = False
 
-def speak(text, lang):
-    """Speak using gTTS and fallback if needed"""
-    if not text.strip():
-        logger.warning("[TTS] Skipped empty text.")
-        return
+
+def speak_elevenlabs(text, lang):
+    try:
+        if not (settings.TTS_PROVIDER == "elevenlabs" and settings.ELEVENLABS_API_KEY):
+            logger.info("[TTS] ElevenLabs not configured properly. Using gTTS.")
+            speak_gtts(text, lang)
+            return
+
+        voice_map = {
+            "en": settings.ELEVENLABS_VOICE_ID_EN,
+            "ar": settings.ELEVENLABS_VOICE_ID_AR
+        }
+
+        voice_id = voice_map.get(lang[:2], settings.ELEVENLABS_VOICE_ID_EN)
+
+        logger.info(f"[ElevenLabs] Speaking ({lang}): {text}")
+
+        response = requests.post(
+            f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
+            headers={
+                "xi-api-key": settings.ELEVENLABS_API_KEY,
+                "Content-Type": "application/json"
+            },
+            json={
+                "text": text,
+                "model_id": "eleven_multilingual_v2",
+                "voice_settings": {
+                    "stability": 0.5,
+                    "similarity_boost": 0.75
+                }
+            }
+        )
+        response.raise_for_status()
+        filename = f"/tmp/speak_{uuid.uuid4()}.mp3"
+        with open(filename, 'wb') as f:
+            f.write(response.content)
+        subprocess.run(["paplay", "--device=" + settings.SPEAKER_DEVICE, filename], check=True)
+        os.remove(filename)
+
+    except Exception as e:
+        logger.warning("[TTS] ElevenLabs failed, falling back to gTTS")
+        speak_gtts(text, lang)
+
+
+
+            
+
+
+def speak_gtts(text, lang):
     try:
         logger.info(f"[gTTS] Speaking: {text}")
         filename = f"/tmp/speak_{uuid.uuid4()}.mp3"
@@ -40,7 +84,21 @@ def speak(text, lang):
         os.remove(filename)
         time.sleep(0.5)
     except Exception as e:
-        logger.exception("[TTS] Failed to speak.")
+        logger.exception("[gTTS] Failed to speak.")
+        
+
+def speak(text, lang):
+    if not text.strip():
+        logger.warning("[TTS] Skipped empty text.")
+        return
+
+    logger.info(f"[TTS] Speaking: {text} (Lang: {lang})")
+
+    if settings.TTS_PROVIDER.lower() == "elevenlabs" and settings.ELEVENLABS_API_KEY:
+        speak_elevenlabs(text, lang)
+    else:
+        speak_gtts(text, lang)
+    
 
 def translate(text, to_lang):
     path = "/translate?api-version=3.0"

@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     AZURE_REGION: str
     MIC_DEVICE_INDEX: int = 2
     SPEAKER_DEVICE: str = "default"
+    TTS_PROVIDER: str = "elevenlabs"  # or "gtts"
+    ELEVENLABS_API_KEY: str = ""
+    ELEVENLABS_VOICE_ID: str = ""  # Optional: Use a specific voice
+    ELEVENLABS_VOICE_ID_EN: str = ""
+    ELEVENLABS_VOICE_ID_AR: str = ""
    
     
 
