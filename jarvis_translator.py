@@ -13,6 +13,8 @@ from gtts import gTTS
 
 from app.core.config import get_settings
 from app.core.logger import get_logger
+from langdetect import detect
+
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -92,14 +94,21 @@ def translator_loop():
             speak("Translation mode stopped.", "en")
             break
 
-        if all(ord(c) < 128 for c in text):
-            translated = translate(text, "ar")
-            logger.info(f"EN → AR: {translated}")
-            speak(translated, "ar")
-        else:
-            translated = translate(text, "en")
-            logger.info(f"AR → EN: {translated}")
-            speak(translated, "en")
+        # Continue translation
+        lang = detect(text)
+        target_lang = "ar" if lang == "en" else "en"
+        translated = translate(text, target_lang)
+        logger.info(f"{lang.upper()} → {target_lang.upper()}: {translated}")
+        speak(translated, target_lang)
+
+        # if all(ord(c) < 128 for c in text):
+        #     translated = translate(text, "ar")
+        #     logger.info(f"EN → AR: {translated}")
+        #     speak(translated, "ar")
+        # else:
+        #     translated = translate(text, "en")
+        #     logger.info(f"AR → EN: {translated}")
+        #     speak(translated, "en")
 
 def listen_for_wake_word(callback):
     keyword_path = os.path.abspath(

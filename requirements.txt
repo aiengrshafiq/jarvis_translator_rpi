@@ -8,3 +8,4 @@ loguru
 pydantic-settings
 sounddevice
 pvporcupine
+langdetect
