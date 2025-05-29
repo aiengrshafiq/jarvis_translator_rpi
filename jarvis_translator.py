@@ -28,7 +28,7 @@ translation_mode = False
 
 
 
-def speak_elevenlabs(text, lang):
+def speak_elevenlabs_old(text, lang):
     try:
         if not (settings.TTS_PROVIDER == "elevenlabs" and settings.ELEVENLABS_API_KEY):
             logger.info("[TTS] ElevenLabs not configured properly. Using gTTS.")
@@ -75,6 +75,86 @@ def speak_elevenlabs(text, lang):
 
             
 
+def speak_elevenlabs(text, lang):
+    try:
+        if not (settings.TTS_PROVIDER == "elevenlabs" and settings.ELEVENLABS_API_KEY):
+            logger.info("[TTS] ElevenLabs not configured properly. Using gTTS.")
+            speak_gtts(text, lang)
+            return
+
+        voice_map = {
+            "en": settings.ELEVENLABS_VOICE_ID_EN,
+            "ar": settings.ELEVENLABS_VOICE_ID_AR
+        }
+
+        voice_id = voice_map.get(lang[:2], settings.ELEVENLABS_VOICE_ID_EN)
+        logger.info(f"[ElevenLabs] Speaking ({settings.ELEVENLABS_TTS_MODE}) ({lang}): {text}")
+
+        if settings.ELEVENLABS_TTS_MODE == "file":
+            # === Non-streaming, file-based mode ===
+            response = requests.post(
+                f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
+                headers={
+                    "xi-api-key": settings.ELEVENLABS_API_KEY,
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "text": text,
+                    "model_id": "eleven_multilingual_v2",
+                    "voice_settings": {
+                        "stability": 0.5,
+                        "similarity_boost": 0.75
+                    }
+                }
+            )
+            response.raise_for_status()
+
+            filename = f"/tmp/speak_{uuid.uuid4()}.mp3"
+            with open(filename, 'wb') as f:
+                f.write(response.content)
+
+            subprocess.run(["paplay", "--device=" + settings.SPEAKER_DEVICE, filename], check=True)
+            os.remove(filename)
+
+        else:
+            # === Streaming mode ===
+            response = requests.post(
+                f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream",
+                headers={
+                    "xi-api-key": settings.ELEVENLABS_API_KEY,
+                    "Content-Type": "application/json",
+                    "Accept": "audio/mpeg"
+                },
+                json={
+                    "text": text,
+                    "model_id": "eleven_multilingual_v2",
+                    "voice_settings": {
+                        "stability": 0.5,
+                        "similarity_boost": 0.75
+                    }
+                },
+                stream=True
+            )
+            response.raise_for_status()
+
+            process = subprocess.Popen(
+                ["mpg123", "-a", settings.SPEAKER_DEVICE, "-"],
+                stdin=subprocess.PIPE
+            )
+
+            for chunk in response.iter_content(chunk_size=4096):
+                if chunk:
+                    process.stdin.write(chunk)
+
+            process.stdin.close()
+            process.wait()
+
+        time.sleep(0.3)
+
+    except Exception as e:
+        logger.warning(f"[TTS] ElevenLabs failed: {e}")
+        speak_gtts(text, lang)
+
 
 def speak_gtts(text, lang):
     try:
@@ -120,7 +200,7 @@ def translate(text, to_lang):
         logger.exception("[Translation Error]")
         return ""
 
-def listen_command():
+def listen_command_old():
     recognizer = sr.Recognizer()
     try:
         with sr.Microphone(device_index=settings.MIC_DEVICE_INDEX) as source:
@@ -139,6 +219,58 @@ def listen_command():
     except Exception as e:
         logger.exception("[Mic Error]")
     return ""
+def listen_command_en():
+    recognizer = sr.Recognizer()
+    try:
+        with sr.Microphone(device_index=settings.MIC_DEVICE_INDEX) as source:
+            logger.info("🎤 Listening for command (EN)...")
+            recognizer.adjust_for_ambient_noise(source, duration=0.5)
+            audio = recognizer.listen(source, timeout=5, phrase_time_limit=10)
+            text = recognizer.recognize_google(audio, language='en')
+            logger.info(f"✅ Recognized (EN): {text}")
+            return text
+    except sr.WaitTimeoutError:
+        logger.warning("[Timeout] No speech detected.")
+    except sr.UnknownValueError:
+        logger.warning("[STT] Could not understand.")
+    except sr.RequestError as e:
+        logger.error(f"[STT Error] {e}")
+    except Exception as e:
+        logger.exception("[Mic Error]")
+    return ""
+
+def listen_command():
+    recognizer = sr.Recognizer()
+    try:
+        with sr.Microphone(device_index=settings.MIC_DEVICE_INDEX) as source:
+            logger.info("🎤 Listening...")
+            recognizer.adjust_for_ambient_noise(source, duration=0.5)
+            audio = recognizer.listen(source, timeout=5, phrase_time_limit=10)
+
+            # First try Arabic recognition
+            try:
+                text = recognizer.recognize_google(audio, language='ar')
+                logger.info(f"✅ Recognized (AR): {text}")
+                return text
+            except sr.UnknownValueError:
+                logger.info("[STT] Not Arabic. Trying English...")
+
+            # Then fallback to English
+            try:
+                text = recognizer.recognize_google(audio, language='en')
+                logger.info(f"✅ Recognized (EN): {text}")
+                return text
+            except sr.UnknownValueError:
+                logger.warning("[STT] Could not understand in either language.")
+
+    except sr.WaitTimeoutError:
+        logger.warning("[Timeout] No speech detected.")
+    except sr.RequestError as e:
+        logger.error(f"[STT Error] {e}")
+    except Exception as e:
+        logger.exception("[Mic Error]")
+
+    return ""
 
 def translator_loop():
     global translation_mode
@@ -156,20 +288,20 @@ def translator_loop():
             break
 
         # Continue translation
-        lang = detect(text)
+        #lang = detect(text)
+        try:
+            lang = detect(text)
+            logger.info(f"[LangDetect] Detected language: {lang}")
+        except Exception:
+            lang = "en"  # fallback default
+            logger.warning("[LangDetect] Failed to detect language. Assuming English.")
         target_lang = "ar" if lang == "en" else "en"
+        logger.info(f"[TargegtLang] Target language: {target_lang}")
         translated = translate(text, target_lang)
         logger.info(f"{lang.upper()} → {target_lang.upper()}: {translated}")
         speak(translated, target_lang)
 
-        # if all(ord(c) < 128 for c in text):
-        #     translated = translate(text, "ar")
-        #     logger.info(f"EN → AR: {translated}")
-        #     speak(translated, "ar")
-        # else:
-        #     translated = translate(text, "en")
-        #     logger.info(f"AR → EN: {translated}")
-        #     speak(translated, "en")
+       
 
 def listen_for_wake_word(callback):
     keyword_path = os.path.abspath(
@@ -202,7 +334,7 @@ def listen_for_wake_word(callback):
 
                     if result >= 0:
                         logger.info("🟢 Wake word detected.")
-                        speak("Wake word detected. You can say start translation to begin.", "en")
+                        #speak("Wake word detected. You can say start translation to begin.", "en")
                         
                         stream.stop_stream()
                         stream.close()
@@ -225,7 +357,7 @@ def command_loop():
     logger.info("Say 'Jarvis, start translation' or 'Jarvis, stop translation'")
     speak("Say 'Jarvis, start translation' or 'Jarvis, stop translation'", "en")
     while True:
-        cmd = listen_command().lower()
+        cmd = listen_command_en().lower()
         if not cmd:
             continue
         if "start translation" in cmd:

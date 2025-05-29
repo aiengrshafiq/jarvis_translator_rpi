@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     ELEVENLABS_VOICE_ID: str = ""  # Optional: Use a specific voice
     ELEVENLABS_VOICE_ID_EN: str = ""
     ELEVENLABS_VOICE_ID_AR: str = ""
-    ELEVENLABS_TTS_MODE: str = os.getenv("ELEVENLABS_TTS_MODE", "stream")
+    ELEVENLABS_TTS_MODE: str = os.getenv("ELEVENLABS_TTS_MODE", "stream")  # or "file"
    
     
 
