@@ -9,3 +9,4 @@ pydantic-settings
 sounddevice
 pvporcupine
 langdetect
+# Requires system package: mpg123 (sudo apt install mpg123)

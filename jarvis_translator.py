@@ -26,6 +26,8 @@ TRANSLATE_ENDPOINT = "https://api.cognitive.microsofttranslator.com"
 translation_mode = False
 
 
+
+
 def speak_elevenlabs(text, lang):
     try:
         if not (settings.TTS_PROVIDER == "elevenlabs" and settings.ELEVENLABS_API_KEY):
@@ -63,6 +65,7 @@ def speak_elevenlabs(text, lang):
             f.write(response.content)
         subprocess.run(["paplay", "--device=" + settings.SPEAKER_DEVICE, filename], check=True)
         os.remove(filename)
+        time.sleep(0.3)
 
     except Exception as e:
         logger.warning("[TTS] ElevenLabs failed, falling back to gTTS")
